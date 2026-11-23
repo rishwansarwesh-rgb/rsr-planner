@@ -200,8 +200,8 @@ document.addEventListener('change',async ev=>{const t=ev.target;
 addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(VIEWS.some(v=>v[0]==h)){view=h;render()}});
 addEventListener('online',()=>user&&load().then(render));
 
-sb.auth.onAuthStateChange(async(_e,s)=>{const was=user?.id;user=s?.user||null;
- if(user&&user.id!=was){fromCache();render();await load();render()}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[]};render()}});
+sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;
+ if(user&&user.id!=was){fromCache();render();setTimeout(()=>load().then(render),0)}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[]};render()}});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 </script></body></html>
