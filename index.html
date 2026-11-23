@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1B2A41">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="RSR Planner">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>RSR Planner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&display=swap">
+<style>
+:root{--bg:#F7F5F0;--ink:#1E2430;--navy:#1B2A41;--slate:#5B6B82;--brass:#A8875A;--sand:#E8E2D6;--grey:#5E6470;--line:#D9D2C3;--card:#fff}
+*{box-sizing:border-box;min-width:0;border-radius:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Fraunces,Georgia,serif;overflow-x:clip;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{display:flex;align-items:center;gap:14px;padding:18px max(5vw,16px);border-bottom:1px solid var(--line)}
+.mono{font-weight:600;font-size:22px;color:var(--navy);letter-spacing:.04em}.rule{width:28px;height:1px;background:var(--brass)}.nm{font-size:12px;letter-spacing:.18em;color:var(--grey)}
+.sync{margin-left:auto;font-size:13px;color:var(--grey)}
+nav{display:flex;overflow-x:auto;border-bottom:1px solid var(--line);padding:0 max(5vw,16px)}
+nav button{flex:none;background:none;border:0;border-bottom:1px solid transparent;font:inherit;color:var(--grey);min-height:44px;padding:0 14px;cursor:pointer}
+nav button.on{color:var(--navy);border-bottom-color:var(--brass)}
+main{max-width:760px;margin:0 auto;padding:24px max(5vw,16px) 80px}
+h1{font-weight:300;font-size:34px;line-height:1.05;margin:0 0 4px;color:var(--navy)}h2{font-weight:400;font-size:20px;margin:28px 0 10px;color:var(--navy)}
+.sub{color:var(--grey);margin:0 0 18px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button.b,select,input{font:inherit;font-size:16px;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 12px}
+button.b{cursor:pointer}button.p{background:var(--navy);color:var(--bg);border-color:var(--navy)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.tl{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.tl li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.t{font-size:20px;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tr .t{font-size:15px;color:var(--slate)}.tr .ti{color:var(--slate);font-style:italic}
+.ti{font-size:17px}.meta{font-size:14px;color:var(--grey)}
+.lab{display:inline-block;font-size:13px;padding:1px 8px;border:1px solid var(--line);margin-right:6px}
+.c-studie{background:#E3E7EE}.c-werk{background:var(--sand)}.c-prive{background:#EFECE5}.c-sport{background:#E9EBE6}
+.dep{color:var(--brass);font-weight:600;white-space:nowrap}
+.warn{border-left:1px solid var(--brass);padding:8px 12px;margin:10px 0;background:var(--card);font-size:15px}
+.ev{cursor:pointer}
+form{display:grid;gap:12px;background:var(--card);border:1px solid var(--line);padding:18px;margin:16px 0}
+label{display:grid;gap:4px;font-size:14px;color:var(--grey)}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;padding:10px 6px;border-bottom:1px solid var(--line);font-weight:400}th{color:var(--grey);font-size:13px}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar{height:6px;background:var(--sand)}.bar i{display:block;height:100%;background:var(--navy)}
+.empty{color:var(--grey);padding:24px 0}.note{font-size:13px;color:var(--grey);margin-top:28px}
+.hits button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;min-height:44px;padding:8px 0;cursor:pointer}
+@media(max-width:600px){.g2{grid-template-columns:1fr}h1{font-size:30px}}
+</style></head><body>
+<header><span class="mono">RSR</span><span class="rule"></span><span class="nm">RISHWAN RAMSOEDH</span><span class="sync" id="sync"></span></header>
+<nav id="nav"></nav>
+<main id="app"><p class="empty">Laden…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+{
+const SB_URL='https://rhtpluvctikoiobecjlj.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJodHBsdXZjdGlrb2lvYmVjamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0NjkyNjgsImV4cCI6MjExMTA0NTI2OH0.KQ0J52Od7prbjd-2DffvS1TnWe_cLEVbMMZvXBRzAIs';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const VIEWS=[['vandaag','Vandaag'],['week','Week'],['locaties','Locaties'],['instellingen','Instellingen']];
+const CATS={studie:'Studie',werk:'Werk',prive:'Privé',sport:'Sport'};
+const MODES={auto:'Auto',ov:'OV',fiets:'Fiets'};
+const DEFS={omrij:1.3,auto:60,fiets:15,ov:40,ovWacht:10,bAuto:10,bOv:5,bFiets:5,meld:10};
+let st={s:{...DEFS},locs:[],corr:{},ev:[]},user=null,online=navigator.onLine;
+let view=VIEWS.some(v=>'#'+v[0]==location.hash)?location.hash.slice(1):'vandaag',day=iso(new Date()),edit=null,hits=[];
+const $=id=>document.getElementById(id);
+const setSync=t=>$('sync').textContent=t;
+function iso(d){const z=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())}
+const m=t=>{const[a,b]=t.split(':');return +a*60+ +b},hm=x=>{x=((x%1440)+1440)%1440;return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')};
+const loc=id=>st.locs.find(l=>l.id==id),home=()=>st.locs.find(l=>l.thuis);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const km=n=>n.toFixed(1).replace('.',',')+' km';
+const ck=(a,b,md)=>[a,b].sort().join('|')+'|'+md;
+
+/* ---------- opslag: Supabase + offline kopie ---------- */
+const cache=()=>{try{localStorage.setItem('rsr-cache',JSON.stringify(st))}catch(e){}};
+function fromCache(){try{const c=JSON.parse(localStorage.getItem('rsr-cache'));if(c)st=c}catch(e){}}
+async function load(){
+ setSync('Synchroniseren…');
+ const[l,a,c,i]=await Promise.all([sb.from('locaties').select('*'),sb.from('afspraken').select('*'),sb.from('reistijd_correcties').select('*'),sb.from('instellingen').select('*')]);
+ const err=[l,a,c,i].find(r=>r.error);if(err){setSync('Offline, opgeslagen kopie');fromCache();return}
+ st.locs=l.data.map(r=>({id:r.id,naam:r.naam,adres:r.adres,lat:r.lat,lon:r.lon,thuis:r.is_thuis}));
+ st.ev=a.data.map(r=>({id:r.id,titel:r.titel,cat:r.categorie,datum:r.datum,start:r.start_tijd.slice(0,5),eind:r.eind_tijd.slice(0,5),loc:r.locatie_id||'',mode:r.vervoer,vast:r.vast}));
+ st.corr={};c.data.forEach(r=>st.corr[ck(r.locatie_a,r.locatie_b,r.vervoer)]=r.minuten);
+ st.s={...DEFS,...(i.data[0]?.data||{})};
+ if(!home()){const{data}=await sb.from('locaties').insert({naam:'Thuis',adres:'Roosendaal',lat:51.5308,lon:4.4653,is_thuis:true}).select().single();
+  if(data)st.locs.push({id:data.id,naam:data.naam,adres:data.adres,lat:data.lat,lon:data.lon,thuis:true})}
+ if(!i.data[0])await sb.from('instellingen').insert({data:st.s});
+ cache();setSync('Gesynchroniseerd '+hm(new Date().getHours()*60+new Date().getMinutes()))}
+async function run(p){const{data,error}=await p;if(error){setSync('Opslaan mislukt: '+error.message);throw error}cache();return data}
+const evRow=o=>({titel:o.titel,categorie:o.cat,datum:o.datum,start_tijd:o.start,eind_tijd:o.eind,locatie_id:o.loc||null,vervoer:o.mode,vast:o.vast,updated_at:new Date().toISOString()});
+
+/* ---------- reistijd en planning (deterministisch) ---------- */
+function hav(a,b){const R=6371,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lon-a.lon);const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function reis(a,b,mode){const s=st.s;if(!a||!b||a.id==b.id)return null;const d=hav(a,b)*s.omrij,key=ck(a.id,b.id,mode);let min,bron='schatting';
+ if(st.corr[key]!=null){min=+st.corr[key];bron='gecorrigeerd'}else min=Math.ceil(d/s[mode]*60+(mode=='ov'?s.ovWacht:0));
+ const buf=+s[{auto:'bAuto',ov:'bOv',fiets:'bFiets'}[mode]];return{min,buf,tot:min+buf,km:d,bron}}
+function plan(datum){
+ const evs=st.ev.filter(e=>e.datum==datum).sort((a,b)=>m(a.start)-m(b.start)),items=[],warns=[],H=home();let prev=H,prevEnd=null,prevTitel='Thuis';
+ evs.forEach((e,i)=>{const L=loc(e.loc);
+  if(L){const r=reis(prev,L,e.mode);
+   if(r){const vt=m(e.start)-r.tot;items.push({type:'reis',t:vt,naar:L,r,mode:e.mode});
+    if(prevEnd!=null&&vt<prevEnd)warns.push(`Reistijd past niet: tussen “${esc(prevTitel)}” (eind ${hm(prevEnd)}) en “${esc(e.titel)}” zit ${m(e.start)-prevEnd} min, nodig ${r.tot} min (${r.min} reis + ${r.buf} buffer).`)}
+   prev=L}
+  items.push({type:'ev',e,t:m(e.start)});
+  evs.slice(i+1).forEach(o=>{if(m(o.start)<m(e.eind)){const rr=reis(loc(e.loc),loc(o.loc),o.mode)?.tot||0;
+   if(e.vast&&o.vast)warns.push(`Botsing tussen vaste afspraken “${esc(e.titel)}” en “${esc(o.titel)}”. Niets verschoven. Oplossing 1: verplaats “${esc(o.titel)}” naar ${hm(m(e.eind)+rr)}. Oplossing 2: kort “${esc(e.titel)}” in tot ${hm(m(o.start)-rr)}.`);
+   else warns.push(`Overlap: “${esc(e.titel)}” en “${esc(o.titel)}”. Flexibele taken schuiven in fase 2 automatisch naar het volgende vrije blok.`)}});
+  prevEnd=Math.max(prevEnd??0,m(e.eind));prevTitel=e.titel});
+ if(prev&&H&&prev.id!=H.id){const last=[...evs].reverse().find(e=>loc(e.loc));const r=reis(prev,H,last.mode);if(r)items.push({type:'reis',t:m(last.eind),naar:H,r,mode:last.mode,terug:true})}
+ items.sort((a,b)=>a.t-b.t||(a.type=='reis'?-1:1));return{items,warns,evs}}
+
+/* ---------- geocoding via OpenStreetMap (Nominatim), één keer per adres ---------- */
+async function zoek(q){const k='geo:'+q.toLowerCase().trim();try{const c=localStorage.getItem(k);if(c)return JSON.parse(c)}catch(e){}
+ const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=nl,be&q='+encodeURIComponent(q),{headers:{'Accept-Language':'nl'}});
+ const d=(await r.json()).map(x=>({naam:x.display_name,lat:+x.lat,lon:+x.lon}));try{localStorage.setItem(k,JSON.stringify(d))}catch(e){}return d}
+
+/* ---------- schermen ---------- */
+const dlabel=d=>new Date(d+'T12:00').toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'});
+function login(){return `<h1>Inloggen</h1><p class="sub">Alleen jij hebt toegang tot deze planner</p>
+ <form id="fa"><label>E-mail<input type="email" name="email" required autocomplete="username"></label>
+ <label>Wachtwoord<input type="password" name="pw" required minlength="8" autocomplete="current-password"></label>
+ <div class="row"><button class="b p">Inloggen</button><button type="button" class="b" data-a="signup">Account aanmaken</button></div><div id="aerr" class="meta"></div></form>`}
+function form(e){e=e||{titel:'',cat:'studie',datum:day,start:'09:00',eind:'10:00',loc:'',mode:'auto',vast:true};
+ return `<form id="f"><label>Titel<input name="titel" required value="${esc(e.titel)}"></label>
+ <div class="g2"><label>Categorie<select name="cat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k==e.cat?'selected':''}>${v}</option>`).join('')}</select></label>
+ <label>Datum<input type="date" name="datum" value="${e.datum}"></label>
+ <label>Start<input type="time" name="start" value="${e.start}"></label><label>Eind<input type="time" name="eind" value="${e.eind}"></label>
+ <label>Locatie<select name="loc"><option value="">Geen locatie</option>${st.locs.map(l=>`<option value="${l.id}" ${l.id==e.loc?'selected':''}>${esc(l.naam)}</option>`).join('')}</select></label>
+ <label>Vervoer<select name="mode">${Object.entries(MODES).map(([k,v])=>`<option value="${k}" ${k==e.mode?'selected':''}>${v}</option>`).join('')}</select></label>
+ <label>Type<select name="vast"><option value="1" ${e.vast?'selected':''}>Vast</option><option value="0" ${!e.vast?'selected':''}>Flexibel</option></select></label></div>
+ <div id="opts" class="meta"></div>
+ <div class="row"><button class="b p">Opslaan</button><button type="button" class="b" data-a="cancel">Annuleren</button>${e.id?'<button type="button" class="b" data-a="del">Verwijderen</button>':''}</div></form>`}
+function vandaag(){const{items,warns}=plan(day);
+ return `<h1>${dlabel(day)}</h1><p class="sub">Tijdlijn met reisblokken en vertrektijden</p>
+ <div class="row"><button class="b" data-a="prev">Vorige dag</button><button class="b" data-a="today">Vandaag</button><button class="b" data-a="next">Volgende dag</button><button class="b p" data-a="new">Nieuwe afspraak</button></div>
+ ${edit!==null?form(st.ev.find(e=>e.id==edit)):''}
+ ${warns.map(w=>`<div class="warn">${w}</div>`).join('')}
+ ${items.length?`<ul class="tl">${items.map(it=>it.type=='reis'?`<li class="tr"><span class="t">${hm(it.t)}</span><div><div class="ti">${it.terug?'Terugreis':'Reis'} naar ${esc(it.naar.naam)} · ${MODES[it.mode]}</div><div class="meta">${it.terug?'':`<span class="dep">Vertrek om ${hm(it.t)}</span> · `}${it.r.min} min reis + ${it.r.buf} min buffer · ${km(it.r.km)} (${it.r.bron})${it.terug?'':` · melding om ${hm(it.t-st.s.meld)}`}</div></div></li>`
+ :`<li class="ev" data-e="${it.e.id}"><span class="t">${it.e.start}</span><div><div class="ti">${esc(it.e.titel)}</div><div class="meta"><span class="lab c-${it.e.cat}">${CATS[it.e.cat]}</span>${it.e.start}–${it.e.eind}${it.e.loc?' · '+esc(loc(it.e.loc)?.naam):''} · ${it.e.vast?'vast':'flexibel'}</div></div></li>`).join('')}</ul>`:'<p class="empty">Nog niets gepland op deze dag.</p>'}`}
+function week(){const base=new Date(day+'T12:00');base.setDate(base.getDate()-((base.getDay()+6)%7));
+ const rows=[...Array(7)].map((_,i)=>{const d=new Date(base);d.setDate(d.getDate()+i);const k=iso(d),p=plan(k);
+  const busy=p.evs.reduce((s,e)=>s+m(e.eind)-m(e.start),0)+p.items.filter(x=>x.type=='reis').reduce((s,x)=>s+x.r.tot,0);return{k,p,busy}});
+ return `<h1>Week</h1><p class="sub">Drukte inclusief reistijd, gemeten tegen 10 uur</p>
+ <div class="row"><button class="b" data-a="pweek">Vorige week</button><button class="b" data-a="nweek">Volgende week</button></div>
+ <table><thead><tr><th>Dag</th><th class="num">Afspraken</th><th class="num">Bezet</th><th style="width:30%">Drukte</th></tr></thead><tbody>${rows.map(r=>`<tr class="ev" data-d="${r.k}"><td>${dlabel(r.k)}${r.p.warns.length?' · <span class="dep">'+r.p.warns.length+' melding</span>':''}</td><td class="num">${r.p.evs.length}</td><td class="num">${hm(r.busy).replace(':','u')}</td><td><div class="bar"><i style="width:${Math.min(100,r.busy/6)}%"></i></div></td></tr>`).join('')}</tbody></table>`}
+function locaties(){const H=home();
+ return `<h1>Locaties</h1><p class="sub">Favorieten met eigen naam en gecorrigeerde reistijden</p>
+ <form id="fz"><div class="g2"><label>Naam<input name="naam" id="lnaam" required placeholder="bijv. Stagebedrijf"></label><label>Adres zoeken<input name="q" id="lq" required placeholder="straat, plaats"></label></div>
+ <div class="row"><button class="b p">Zoeken</button></div><div id="lerr" class="meta"></div>
+ <div class="hits">${hits.map((h,i)=>`<button type="button" data-h="${i}">${esc(h.naam)}</button>`).join('')}</div></form>
+ <table><thead><tr><th>Locatie</th><th class="num">Vanaf Thuis</th><th class="num">Auto</th><th class="num">OV</th><th class="num">Fiets</th><th></th></tr></thead><tbody>
+ ${st.locs.map(l=>{const c=Object.keys(MODES).map(md=>{const r=reis(H,l,md);return r?`<td class="num"><input aria-label="Reistijd ${md} in minuten" data-c="${ck(H.id,l.id,md)}" data-ab="${H.id},${l.id},${md}" value="${r.min}" style="width:64px;text-align:right"> min</td>`:'<td class="num">–</td>'}).join('');
+  return `<tr><td>${esc(l.naam)}<div class="meta">${esc(l.adres)}</div></td><td class="num">${l.thuis?'–':km(hav(H,l)*st.s.omrij)}</td>${c}<td>${l.thuis?'':`<button class="b" data-dl="${l.id}">Verwijderen</button>`}</td></tr>`}).join('')}</tbody></table>
+ <p class="note">Adressen via OpenStreetMap; elk adres wordt één keer opgezocht. Pas een reistijd aan om de schatting te vervangen; leegmaken zet de schatting terug.</p>`}
+function instellingen(){const f=(k,l)=>`<label>${l}<input type="number" step="any" data-s="${k}" value="${st.s[k]}"></label>`;
+ return `<h1>Instellingen</h1><p class="sub">Snelheden, buffers en meldingen</p>
+ <h2>Schatting</h2><div class="g2">${f('omrij','Omrijfactor')}${f('auto','Auto, km/u')}${f('ov','OV, km/u')}${f('ovWacht','OV wachten/overstap, min')}${f('fiets','Fiets, km/u')}</div>
+ <h2>Buffers</h2><div class="g2">${f('bAuto','Auto, min')}${f('bOv','OV, min')}${f('bFiets','Fiets, min')}</div>
+ <h2>Meldingen</h2><div class="g2">${f('meld','Vertrekmelding, min vooraf')}</div>
+ <h2>Gegevens</h2><div class="row"><button class="b" data-a="export">Exporteer JSON</button><button class="b" data-a="logout">Uitloggen</button></div>
+ <p class="note">Ingelogd als ${esc(user?.email)}</p>`}
+function nav(){$('nav').innerHTML=user?VIEWS.map(([k,v])=>`<button class="${k==view?'on':''}" data-v="${k}">${v}</button>`).join(''):''}
+function render(){nav();$('app').innerHTML=user?{vandaag,week,locaties,instellingen}[view]():login();bind()}
+
+function bind(){
+ const fa=$('fa');if(fa)fa.onsubmit=async ev=>{ev.preventDefault();const{error}=await sb.auth.signInWithPassword({email:fa.email.value,password:fa.pw.value});if(error)$('aerr').textContent='Inloggen mislukt: '+error.message};
+ const f=$('f');if(f){const upd=()=>{const L=loc(f.loc.value);let P=home();
+   const before=st.ev.filter(e=>e.datum==f.datum.value&&e.id!=edit&&m(e.start)<m(f.start.value)&&loc(e.loc)).sort((a,b)=>m(a.start)-m(b.start)).pop();if(before)P=loc(before.loc);
+   $('opts').innerHTML=L&&P&&L.id!=P.id?'Vanaf '+esc(P.naam)+': '+Object.keys(MODES).map(md=>{const r=reis(P,L,md);return `${MODES[md]} ${r.tot} min (vertrek ${hm(m(f.start.value)-r.tot)})`}).join(' · '):''};
+  f.oninput=upd;upd();
+  f.onsubmit=async ev=>{ev.preventDefault();const o=Object.fromEntries(new FormData(f));o.vast=o.vast=='1';
+   if(m(o.eind)<=m(o.start)){$('opts').textContent='Eindtijd moet na de starttijd liggen.';return}
+   if(edit){await run(sb.from('afspraken').update(evRow(o)).eq('id',edit));Object.assign(st.ev.find(e=>e.id==edit),o)}
+   else{const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id})}
+   day=o.datum;edit=null;cache();render()}}
+ const fz=$('fz');if(fz)fz.onsubmit=async ev=>{ev.preventDefault();$('lerr').textContent='Zoeken…';
+  try{hits=await zoek(fz.q.value);const n=fz.naam.value,q=fz.q.value;render();$('lnaam').value=n;$('lq').value=q;$('lerr').textContent=hits.length?'Kies het juiste adres:':'Geen adres gevonden.'}catch(e){$('lerr').textContent='Zoeken mislukt. Controleer je verbinding.'}}}
+
+document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-v],[data-a],[data-e],[data-d],[data-dl],[data-h]');if(!t)return;
+ if(t.dataset.v){view=t.dataset.v;edit=null;location.hash=view}
+ else if(t.dataset.d){day=t.dataset.d;view='vandaag'}
+ else if(t.dataset.e){edit=t.dataset.e}
+ else if(t.dataset.h){const h=hits[+t.dataset.h],naam=$('lnaam').value.trim();if(!naam){$('lerr').textContent='Geef de locatie eerst een naam.';return}
+  const d=await run(sb.from('locaties').insert({naam,adres:h.naam,lat:h.lat,lon:h.lon}).select().single());st.locs.push({id:d.id,naam,adres:h.naam,lat:h.lat,lon:h.lon,thuis:false});hits=[];cache()}
+ else if(t.dataset.dl){await run(sb.from('locaties').delete().eq('id',t.dataset.dl));st.locs=st.locs.filter(l=>l.id!=t.dataset.dl);st.ev.forEach(e=>{if(e.loc==t.dataset.dl)e.loc=''});cache()}
+ else{const a=t.dataset.a,d=new Date(day+'T12:00');
+  if(a=='signup'){const fa=$('fa');const{error}=await sb.auth.signUp({email:fa.email.value,password:fa.pw.value,options:{emailRedirectTo:location.origin+location.pathname}});$('aerr').textContent=error?'Mislukt: '+error.message:'Bevestig je e-mailadres via de link in je mail en log daarna in.';return}
+  if(a=='prev'||a=='next'){d.setDate(d.getDate()+(a=='prev'?-1:1));day=iso(d)}
+  if(a=='pweek'||a=='nweek'){d.setDate(d.getDate()+(a=='pweek'?-7:7));day=iso(d)}
+  if(a=='today')day=iso(new Date());if(a=='new')edit='';if(a=='cancel')edit=null;
+  if(a=='del'){await run(sb.from('afspraken').delete().eq('id',edit));st.ev=st.ev.filter(e=>e.id!=edit);edit=null;cache()}
+  if(a=='export'){const b=new Blob([JSON.stringify(st,null,1)],{type:'application/json'}),u=URL.createObjectURL(b),x=document.createElement('a');x.href=u;x.download=iso(new Date())+'_RSR_Planner_export.json';x.click();return}
+  if(a=='logout'){await sb.auth.signOut();try{localStorage.removeItem('rsr-cache')}catch(e){}return}}
+ render()});
+document.addEventListener('change',async ev=>{const t=ev.target;
+ if(t.dataset.s){const v=parseFloat(t.value);if(!isNaN(v)&&v>0){st.s[t.dataset.s]=v;await run(sb.from('instellingen').upsert({user_id:user.id,data:st.s}))}}
+ if(t.dataset.c){const[a,b,md]=t.dataset.ab.split(','),[x,y]=[a,b].sort();
+  if(t.value===''){delete st.corr[t.dataset.c];await run(sb.from('reistijd_correcties').delete().match({locatie_a:x,locatie_b:y,vervoer:md}))}
+  else{const v=parseInt(t.value);if(v>0){st.corr[t.dataset.c]=v;await run(sb.from('reistijd_correcties').upsert({user_id:user.id,locatie_a:x,locatie_b:y,vervoer:md,minuten:v}))}}
+  render()}});
+addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(VIEWS.some(v=>v[0]==h)){view=h;render()}});
+addEventListener('online',()=>user&&load().then(render));
+
+sb.auth.onAuthStateChange(async(_e,s)=>{const was=user?.id;user=s?.user||null;
+ if(user&&user.id!=was){fromCache();render();await load();render()}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[]};render()}});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script></body></html>
