@@ -15,7 +15,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Fraunces,Georgia,serif;overflow-x:clip;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 header{display:flex;align-items:center;gap:14px;padding:18px max(5vw,16px);border-bottom:1px solid var(--line)}
 .mono{font-weight:600;font-size:22px;color:var(--navy);letter-spacing:.04em}.rule{width:28px;height:1px;background:var(--brass)}.nm{font-size:12px;letter-spacing:.18em;color:var(--grey)}
-.sync{margin-left:auto;font-size:13px;color:var(--grey)}
+.sync{margin-left:auto;text-align:right;font-size:13px;color:var(--grey)}
 nav{display:flex;overflow-x:auto;border-bottom:1px solid var(--line);padding:0 max(5vw,16px)}
 nav button{flex:none;background:none;border:0;border-bottom:1px solid transparent;font:inherit;color:var(--grey);min-height:44px;padding:0 14px;cursor:pointer}
 nav button.on{color:var(--navy);border-bottom-color:var(--brass)}
@@ -46,7 +46,7 @@ table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;p
 .hits button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;min-height:44px;padding:8px 0;cursor:pointer}
 @media(max-width:600px){.g2{grid-template-columns:1fr}h1{font-size:30px}}
 </style></head><body>
-<header><span class="mono">RSR</span><span class="rule"></span><span class="nm">RISHWAN RAMSOEDH</span><span class="sync" id="sync"></span></header>
+<header><span class="mono">RSR</span><span class="rule"></span><span class="nm">RISHWAN RAMSOEDH</span><span class="sync" id="sync"></span><button class="b" id="rf" aria-label="Vernieuwen" style="min-width:44px;padding:0 10px">Vernieuwen</button></header>
 <nav id="nav"></nav>
 <main id="app"><p class="empty">Laden…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -202,6 +202,11 @@ addEventListener('online',()=>user&&load().then(render));
 
 sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;
  if(user&&user.id!=was){fromCache();render();setTimeout(()=>load().then(render),0)}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[]};render()}});
+async function refresh(){if(!user)return;$('rf').disabled=true;try{await load();render()}finally{$('rf').disabled=false}}
+$('rf').onclick=refresh;
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')refresh()});
+let y0=null;addEventListener('touchstart',e=>{y0=scrollY==0?e.touches[0].clientY:null},{passive:true});
+addEventListener('touchend',e=>{if(y0!=null&&e.changedTouches[0].clientY-y0>90)refresh();y0=null},{passive:true});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 </script></body></html>
