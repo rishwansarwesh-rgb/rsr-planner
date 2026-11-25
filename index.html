@@ -23,7 +23,8 @@ main{max-width:760px;margin:0 auto;padding:24px max(5vw,16px) 80px}
 h1{font-weight:300;font-size:34px;line-height:1.05;margin:0 0 4px;color:var(--navy)}h2{font-weight:400;font-size:20px;margin:28px 0 10px;color:var(--navy)}
 .sub{color:var(--grey);margin:0 0 18px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-button.b,select,input{font:inherit;font-size:16px;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 12px}
+button.b,select,input,textarea{font:inherit;font-size:16px;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 12px}
+textarea{width:100%;padding:10px 12px;resize:vertical}
 button.b{cursor:pointer}button.p{background:var(--navy);color:var(--bg);border-color:var(--navy)}
 :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 .tl{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
@@ -55,11 +56,13 @@ table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;p
 const SB_URL='https://rhtpluvctikoiobecjlj.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJodHBsdXZjdGlrb2lvYmVjamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0NjkyNjgsImV4cCI6MjExMTA0NTI2OH0.KQ0J52Od7prbjd-2DffvS1TnWe_cLEVbMMZvXBRzAIs';
 const sb=supabase.createClient(SB_URL,SB_KEY);
+const AI_URL='https://hello-world-muddy-heart-7f0c.rishwansarwesh.workers.dev';
 const VIEWS=[['vandaag','Vandaag'],['week','Week'],['locaties','Locaties'],['instellingen','Instellingen']];
 const CATS={studie:'Studie',werk:'Werk',prive:'Privé',sport:'Sport'};
 const MODES={auto:'Auto',ov:'OV',fiets:'Fiets'};
 const DEFS={omrij:1.3,auto:60,fiets:15,ov:40,ovWacht:10,bAuto:10,bOv:5,bFiets:5,meld:10};
 let st={s:{...DEFS},locs:[],corr:{},ev:[]},user=null,online=navigator.onLine;
+let ai={tekst:'',bezig:false,fout:'',v:null};
 let view=VIEWS.some(v=>'#'+v[0]==location.hash)?location.hash.slice(1):'vandaag',day=iso(new Date()),edit=null,hits=[];
 const $=id=>document.getElementById(id);
 const setSync=t=>$('sync').textContent=t;
@@ -113,6 +116,37 @@ async function zoek(q){const k='geo:'+q.toLowerCase().trim();try{const c=localSt
  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=nl,be&q='+encodeURIComponent(q),{headers:{'Accept-Language':'nl'}});
  const d=(await r.json()).map(x=>({naam:x.display_name,lat:+x.lat,lon:+x.lon}));try{localStorage.setItem(k,JSON.stringify(d))}catch(e){}return d}
 
+/* ---------- AI-invoer (Workers AI, gratis plan): alleen voorstel, opslaan na bevestiging ---------- */
+const verbruik=()=>{try{const v=JSON.parse(localStorage.getItem('rsr-ai'))||{};return v.dag==iso(new Date())?v:{dag:iso(new Date()),n:0,tok:0}}catch(e){return{dag:iso(new Date()),n:0,tok:0}}};
+function telVerbruik(u){const v=verbruik();v.n++;v.tok+=(u?.total_tokens||((u?.prompt_tokens||0)+(u?.completion_tokens||0)));try{localStorage.setItem('rsr-ai',JSON.stringify(v))}catch(e){}}
+function zoekLoc(n){if(!n)return null;n=n.toLowerCase().trim();return st.locs.find(l=>l.naam.toLowerCase()==n)||st.locs.find(l=>l.naam.toLowerCase().includes(n)||n.includes(l.naam.toLowerCase())||l.adres.toLowerCase().includes(n))||null}
+function vrijBlok(datum,duur){const occ=st.ev.filter(e=>e.datum==datum).map(e=>{const L=loc(e.loc),r=L?reis(home(),L,e.mode):null;return[m(e.start)-(r?.tot||0),m(e.eind)+(r?.tot||0)]});
+ for(let t=8*60;t+duur<=22*60;t+=15)if(!occ.some(([a,b])=>t<b&&t+duur>a))return hm(t);return null}
+function naarVoorstel(it){const r={...it,ok:true,opm:''};r.cat=CATS[it.categorie]?it.categorie:'prive';r.mode=MODES[it.vervoer]?it.vervoer:'auto';
+ const L=zoekLoc(it.locatie);r.loc=L?.id||'';if(it.locatie&&!L)r.opm=`Locatie “${esc(it.locatie)}” niet gevonden; voeg hem toe bij Locaties. Nu zonder locatie.`;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(it.datum||'')){r.ok=false;r.opm='Geen geldige datum.';return r}
+ if(it.type=='deadline'){r.ok=false;r.opm='Deadline: opknippen in werkblokken volgt in de volgende stap.';return r}
+ if(it.start&&!it.eind)r.eind=hm(m(it.start)+(it.duur_min||60));else r.eind=it.eind;r.start=it.start;
+ if(!r.start){const s=vrijBlok(it.datum,it.duur_min||60);if(!s){r.ok=false;r.opm='Geen vrij blok gevonden op deze dag.';return r}r.start=s;r.eind=hm(m(s)+(it.duur_min||60));r.vast=false;r.opm=(r.opm?r.opm+' ':'')+'Flexibel: ingepland in het eerste vrije blok (na reistijd).'}
+ else r.vast=it.vast!==false;
+ if(m(r.eind)<=m(r.start)){r.ok=false;r.opm='Eindtijd ligt niet na de starttijd.'}return r}
+async function aiVoorstel(tekst){ai={tekst,bezig:true,fout:'',v:null};render();
+ try{const{data:{session}}=await sb.auth.getSession();
+  const r=await fetch(AI_URL+'/parse',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:SB_KEY},body:JSON.stringify({tekst,vandaag:iso(new Date())})});
+  const d=await r.json();if(!r.ok){ai.fout=d.fout=='ai-limiet'?'Het gratis AI-verbruik van vandaag is op. Morgen werkt het weer; plan nu handmatig.':'AI niet beschikbaar ('+esc(d.fout||r.status)+'). Plan handmatig.';return}
+  telVerbruik(d.verbruik);ai.v={items:(d.voorstel?.items||[]).map(naarVoorstel),vragen:d.voorstel?.vragen||[]}}
+ catch(e){ai.fout='AI niet bereikbaar. Controleer je verbinding of plan handmatig.'}finally{ai.bezig=false;render()}}
+function aiBlok(){const v=ai.v;
+ return `<form id="fai"><label>Typ in gewone taal<textarea name="t" rows="2" placeholder="morgen 9–17 Jumbo, donderdag deadline verslag, vrijdagavond sporten in Breda">${esc(ai.tekst)}</textarea></label>
+ <div class="row"><button class="b p" ${ai.bezig?'disabled':''}>${ai.bezig?'Bezig…':'Voorstel maken'}</button></div></form>
+ ${ai.fout?`<div class="warn">${ai.fout}</div>`:''}
+ ${v?`<h2>Voorstel</h2><p class="meta">Controleer en vink aan wat je wilt opslaan. Er wordt niets opgeslagen zonder jouw bevestiging.</p>
+ <ul class="tl">${v.items.map((it,i)=>`<li><span class="t"><input type="checkbox" data-ai="${i}" ${it.ok?'checked':'disabled'} aria-label="Opslaan"></span><div><div class="ti">${esc(it.titel)}</div>
+ <div class="meta"><span class="lab c-${it.cat}">${CATS[it.cat]}</span>${dlabel(it.datum||day)}${it.start?' · '+it.start+'–'+it.eind:''}${it.loc?' · '+esc(loc(it.loc).naam)+' · '+MODES[it.mode]:''} · ${it.vast?'vast':'flexibel'}</div>
+ ${it.toelichting?`<div class="meta">${esc(it.toelichting)}</div>`:''}${it.opm?`<div class="meta dep">${it.opm}</div>`:''}</div></li>`).join('')}</ul>
+ ${v.vragen.map(q=>`<div class="warn">${esc(q)}</div>`).join('')}
+ <div class="row"><button class="b p" data-a="aisave">Bevestigen en opslaan</button><button class="b" data-a="aicancel">Annuleren</button></div>`:''}`}
+
 /* ---------- schermen ---------- */
 const dlabel=d=>new Date(d+'T12:00').toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'});
 function login(){return `<h1>Inloggen</h1><p class="sub">Alleen jij hebt toegang tot deze planner</p>
@@ -132,6 +166,7 @@ function form(e){e=e||{titel:'',cat:'studie',datum:day,start:'09:00',eind:'10:00
 function vandaag(){const{items,warns}=plan(day);
  return `<h1>${dlabel(day)}</h1><p class="sub">Tijdlijn met reisblokken en vertrektijden</p>
  <div class="row"><button class="b" data-a="prev">Vorige dag</button><button class="b" data-a="today">Vandaag</button><button class="b" data-a="next">Volgende dag</button><button class="b p" data-a="new">Nieuwe afspraak</button></div>
+ ${aiBlok()}
  ${edit!==null?form(st.ev.find(e=>e.id==edit)):''}
  ${warns.map(w=>`<div class="warn">${w}</div>`).join('')}
  ${items.length?`<ul class="tl">${items.map(it=>it.type=='reis'?`<li class="tr"><span class="t">${hm(it.t)}</span><div><div class="ti">${it.terug?'Terugreis':'Reis'} naar ${esc(it.naar.naam)} · ${MODES[it.mode]}</div><div class="meta">${it.terug?'':`<span class="dep">Vertrek om ${hm(it.t)}</span> · `}${it.r.min} min reis + ${it.r.buf} min buffer · ${km(it.r.km)} (${it.r.bron})${it.terug?'':` · melding om ${hm(it.t-st.s.meld)}`}</div></div></li>`
@@ -156,6 +191,7 @@ function instellingen(){const f=(k,l)=>`<label>${l}<input type="number" step="an
  <h2>Schatting</h2><div class="g2">${f('omrij','Omrijfactor')}${f('auto','Auto, km/u')}${f('ov','OV, km/u')}${f('ovWacht','OV wachten/overstap, min')}${f('fiets','Fiets, km/u')}</div>
  <h2>Buffers</h2><div class="g2">${f('bAuto','Auto, min')}${f('bOv','OV, min')}${f('bFiets','Fiets, min')}</div>
  <h2>Meldingen</h2><div class="g2">${f('meld','Vertrekmelding, min vooraf')}</div>
+ <h2>AI-verbruik vandaag</h2><p class="meta">${verbruik().n} verzoeken · ${verbruik().tok.toLocaleString('nl-NL')} tokens. Gratis plan van Cloudflare Workers AI: dagelijks gratis verbruik, geen kosten. Is het op, dan stopt de AI tot morgen en werkt handmatige invoer gewoon door.</p>
  <h2>Gegevens</h2><div class="row"><button class="b" data-a="export">Exporteer JSON</button><button class="b" data-a="logout">Uitloggen</button></div>
  <p class="note">Ingelogd als ${esc(user?.email)}</p>`}
 function nav(){$('nav').innerHTML=user?VIEWS.map(([k,v])=>`<button class="${k==view?'on':''}" data-v="${k}">${v}</button>`).join(''):''}
@@ -172,6 +208,7 @@ function bind(){
    if(edit){await run(sb.from('afspraken').update(evRow(o)).eq('id',edit));Object.assign(st.ev.find(e=>e.id==edit),o)}
    else{const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id})}
    day=o.datum;edit=null;cache();render()}}
+ const fai=$('fai');if(fai)fai.onsubmit=ev=>{ev.preventDefault();const t=fai.t.value.trim();if(t)aiVoorstel(t)};
  const fz=$('fz');if(fz)fz.onsubmit=async ev=>{ev.preventDefault();$('lerr').textContent='Zoeken…';
   try{hits=await zoek(fz.q.value);const n=fz.naam.value,q=fz.q.value;render();$('lnaam').value=n;$('lq').value=q;$('lerr').textContent=hits.length?'Kies het juiste adres:':'Geen adres gevonden.'}catch(e){$('lerr').textContent='Zoeken mislukt. Controleer je verbinding.'}}}
 
@@ -188,6 +225,11 @@ document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-v]
   if(a=='pweek'||a=='nweek'){d.setDate(d.getDate()+(a=='pweek'?-7:7));day=iso(d)}
   if(a=='today')day=iso(new Date());if(a=='new')edit='';if(a=='cancel')edit=null;
   if(a=='del'){await run(sb.from('afspraken').delete().eq('id',edit));st.ev=st.ev.filter(e=>e.id!=edit);edit=null;cache()}
+  if(a=='aicancel'){ai={tekst:'',bezig:false,fout:'',v:null}}
+  if(a=='aisave'){const kies=[...document.querySelectorAll('[data-ai]')].filter(x=>x.checked).map(x=>ai.v.items[+x.dataset.ai]);
+   for(const it of kies){const o={titel:it.titel,cat:it.cat,datum:it.datum,start:it.start,eind:it.eind,loc:it.loc,mode:it.mode,vast:it.vast};
+    const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id})}
+   if(kies[0])day=kies[0].datum;ai={tekst:'',bezig:false,fout:'',v:null};cache()}
   if(a=='export'){const b=new Blob([JSON.stringify(st,null,1)],{type:'application/json'}),u=URL.createObjectURL(b),x=document.createElement('a');x.href=u;x.download=iso(new Date())+'_RSR_Planner_export.json';x.click();return}
   if(a=='logout'){await sb.auth.signOut();try{localStorage.removeItem('rsr-cache')}catch(e){}return}}
  render()});
