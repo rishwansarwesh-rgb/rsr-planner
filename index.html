@@ -61,7 +61,7 @@ const VIEWS=[['vandaag','Vandaag'],['week','Week'],['locaties','Locaties'],['ins
 const CATS={studie:'Studie',werk:'Werk',prive:'Privé',sport:'Sport'};
 const MODES={auto:'Auto',ov:'OV',fiets:'Fiets'};
 const DEFS={omrij:1.3,auto:60,fiets:15,ov:40,ovWacht:10,bAuto:10,bOv:5,bFiets:5,meld:10};
-let st={s:{...DEFS},locs:[],corr:{},ev:[]},user=null,online=navigator.onLine;
+let st={s:{...DEFS},locs:[],corr:{},ev:[],ext:[],extTijd:null,agendas:[]},user=null,online=navigator.onLine;
 let ai={tekst:'',bezig:false,fout:'',v:null};
 let view=VIEWS.some(v=>'#'+v[0]==location.hash)?location.hash.slice(1):'vandaag',day=iso(new Date()),edit=null,hits=[];
 const $=id=>document.getElementById(id);
@@ -97,7 +97,7 @@ function reis(a,b,mode){const s=st.s;if(!a||!b||a.id==b.id)return null;const d=h
  if(st.corr[key]!=null){min=+st.corr[key];bron='gecorrigeerd'}else min=Math.ceil(d/s[mode]*60+(mode=='ov'?s.ovWacht:0));
  const buf=+s[{auto:'bAuto',ov:'bOv',fiets:'bFiets'}[mode]];return{min,buf,tot:min+buf,km:d,bron}}
 function plan(datum){
- const evs=st.ev.filter(e=>e.datum==datum).sort((a,b)=>m(a.start)-m(b.start)),items=[],warns=[],H=home();let prev=H,prevEnd=null,prevTitel='Thuis';
+ const evs=alleEv().filter(e=>e.datum==datum).sort((a,b)=>m(a.start)-m(b.start)),items=[],warns=[],H=home();let prev=H,prevEnd=null,prevTitel='Thuis';
  evs.forEach((e,i)=>{const L=loc(e.loc);
   if(L){const r=reis(prev,L,e.mode);
    if(r){const vt=m(e.start)-r.tot;items.push({type:'reis',t:vt,naar:L,r,mode:e.mode});
@@ -116,11 +116,30 @@ async function zoek(q){const k='geo:'+q.toLowerCase().trim();try{const c=localSt
  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=nl,be&q='+encodeURIComponent(q),{headers:{'Accept-Language':'nl'}});
  const d=(await r.json()).map(x=>({naam:x.display_name,lat:+x.lat,lon:+x.lon}));try{localStorage.setItem(k,JSON.stringify(d))}catch(e){}return d}
 
+/* ---------- Apple Agenda via iCloud (Worker) ---------- */
+let agStatus='';
+async function api(pad,body){const{data:{session}}=await sb.auth.getSession();if(!session)throw new Error('niet ingelogd');
+ const r=await fetch(AI_URL+pad,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:SB_KEY},body:JSON.stringify(body)});
+ const d=await r.json().catch(()=>({fout:'http '+r.status}));if(!r.ok)throw Object.assign(new Error(d.fout||r.status),{d});return d}
+const agMelding=e=>({'agenda-niet-ingesteld':'Apple Agenda is nog niet gekoppeld (wachtwoord ontbreekt in de Worker).','icloud-login':'iCloud weigert de inlog. Controleer je Apple ID en app-specifieke wachtwoord.'}[e.message]||'Apple Agenda niet bereikbaar.');
+function extCat(e){const a=(e.agenda+' '+e.titel).toLowerCase();return/avans|college|les |tentamen|school|studie|stage/.test(a)?'studie':/jumbo|r&r|dienst|werk/.test(a)?'werk':/sport|fitness|training|voetbal/.test(a)?'sport':'prive'}
+async function agSync(stil){const van=new Date();van.setDate(van.getDate()-7);const tot=new Date();tot.setDate(tot.getDate()+42);
+ try{const d=await api('/cal/events',{van:iso(van),tot:iso(tot)});
+  st.agendas=d.agendas;st.ext=d.events.filter(e=>!e.rsr&&!e.heleDag).map(e=>{const L=zoekLoc(e.locatie);return{id:'x:'+e.uid+':'+e.datum+e.start,ext:true,agenda:e.agenda,titel:e.titel,cat:extCat(e),datum:e.datum,start:e.start,eind:e.eindDatum!=e.datum?'23:59':e.eind,loc:L?.id||'',locNaam:e.locatie,mode:'auto',vast:true}});
+  // wijzigingen in Apple Agenda aan planner-afspraken overnemen (Apple is leidend bij verschil)
+  for(const a of d.events.filter(e=>e.rsr&&!e.heleDag)){const id=(a.href.match(/rsr-([^/]+?)\.ics/)||[])[1];const e=id&&st.ev.find(x=>String(x.id)==decodeURIComponent(id));
+   if(e&&(e.datum!=a.datum||e.start!=a.start||e.eind!=a.eind||e.titel!=a.titel)){Object.assign(e,{datum:a.datum,start:a.start,eind:a.eind,titel:a.titel});await run(sb.from('afspraken').update(evRow(e)).eq('id',e.id))}}
+  st.extTijd=new Date().toISOString();agStatus='';cache()}
+ catch(e){agStatus=agMelding(e);if(!stil)setSync(agStatus)}}
+function agPut(o){api('/cal/put',{ev:{id:o.id,titel:o.titel,datum:o.datum,start:o.start,eind:o.eind,locatie:loc(o.loc)?.adres||''}}).catch(e=>setSync('Niet naar Apple Agenda: '+agMelding(e)))}
+function agDel(id){api('/cal/delete',{id}).catch(()=>{})}
+const alleEv=()=>st.ev.concat(st.ext||[]);
+
 /* ---------- AI-invoer (Workers AI, gratis plan): alleen voorstel, opslaan na bevestiging ---------- */
 const verbruik=()=>{try{const v=JSON.parse(localStorage.getItem('rsr-ai'))||{};return v.dag==iso(new Date())?v:{dag:iso(new Date()),n:0,tok:0}}catch(e){return{dag:iso(new Date()),n:0,tok:0}}};
 function telVerbruik(u){const v=verbruik();v.n++;v.tok+=(u?.total_tokens||((u?.prompt_tokens||0)+(u?.completion_tokens||0)));try{localStorage.setItem('rsr-ai',JSON.stringify(v))}catch(e){}}
 function zoekLoc(n){if(!n)return null;n=n.toLowerCase().trim();return st.locs.find(l=>l.naam.toLowerCase()==n)||st.locs.find(l=>l.naam.toLowerCase().includes(n)||n.includes(l.naam.toLowerCase())||l.adres.toLowerCase().includes(n))||null}
-function vrijBlok(datum,duur){const occ=st.ev.filter(e=>e.datum==datum).map(e=>{const L=loc(e.loc),r=L?reis(home(),L,e.mode):null;return[m(e.start)-(r?.tot||0),m(e.eind)+(r?.tot||0)]});
+function vrijBlok(datum,duur){const occ=alleEv().filter(e=>e.datum==datum).map(e=>{const L=loc(e.loc),r=L?reis(home(),L,e.mode):null;return[m(e.start)-(r?.tot||0),m(e.eind)+(r?.tot||0)]});
  for(let t=8*60;t+duur<=22*60;t+=15)if(!occ.some(([a,b])=>t<b&&t+duur>a))return hm(t);return null}
 function naarVoorstel(it){const r={...it,ok:true,opm:''};r.cat=CATS[it.categorie]?it.categorie:'prive';r.mode=MODES[it.vervoer]?it.vervoer:'auto';
  const L=zoekLoc(it.locatie);r.loc=L?.id||'';if(it.locatie&&!L)r.opm=`Locatie “${esc(it.locatie)}” niet gevonden; voeg hem toe bij Locaties. Nu zonder locatie.`;
@@ -170,7 +189,7 @@ function vandaag(){const{items,warns}=plan(day);
  ${edit!==null?form(st.ev.find(e=>e.id==edit)):''}
  ${warns.map(w=>`<div class="warn">${w}</div>`).join('')}
  ${items.length?`<ul class="tl">${items.map(it=>it.type=='reis'?`<li class="tr"><span class="t">${hm(it.t)}</span><div><div class="ti">${it.terug?'Terugreis':'Reis'} naar ${esc(it.naar.naam)} · ${MODES[it.mode]}</div><div class="meta">${it.terug?'':`<span class="dep">Vertrek om ${hm(it.t)}</span> · `}${it.r.min} min reis + ${it.r.buf} min buffer · ${km(it.r.km)} (${it.r.bron})${it.terug?'':` · melding om ${hm(it.t-st.s.meld)}`}</div></div></li>`
- :`<li class="ev" data-e="${it.e.id}"><span class="t">${it.e.start}</span><div><div class="ti">${esc(it.e.titel)}</div><div class="meta"><span class="lab c-${it.e.cat}">${CATS[it.e.cat]}</span>${it.e.start}–${it.e.eind}${it.e.loc?' · '+esc(loc(it.e.loc)?.naam):''} · ${it.e.vast?'vast':'flexibel'}</div></div></li>`).join('')}</ul>`:'<p class="empty">Nog niets gepland op deze dag.</p>'}`}
+ :`<li class="${it.e.ext?'':'ev'}" ${it.e.ext?'':`data-e="${it.e.id}"`}><span class="t">${it.e.start}</span><div><div class="ti">${esc(it.e.titel)}</div><div class="meta"><span class="lab c-${it.e.cat}">${CATS[it.e.cat]}</span>${it.e.start}–${it.e.eind}${it.e.loc?' · '+esc(loc(it.e.loc)?.naam):it.e.locNaam?' · '+esc(it.e.locNaam)+' (onbekende locatie)':''} · ${it.e.ext?'Apple Agenda: '+esc(it.e.agenda):it.e.vast?'vast':'flexibel'}</div></div></li>`).join('')}</ul>`:'<p class="empty">Nog niets gepland op deze dag.</p>'}`}
 function week(){const base=new Date(day+'T12:00');base.setDate(base.getDate()-((base.getDay()+6)%7));
  const rows=[...Array(7)].map((_,i)=>{const d=new Date(base);d.setDate(d.getDate()+i);const k=iso(d),p=plan(k);
   const busy=p.evs.reduce((s,e)=>s+m(e.eind)-m(e.start),0)+p.items.filter(x=>x.type=='reis').reduce((s,x)=>s+x.r.tot,0);return{k,p,busy}});
@@ -191,6 +210,9 @@ function instellingen(){const f=(k,l)=>`<label>${l}<input type="number" step="an
  <h2>Schatting</h2><div class="g2">${f('omrij','Omrijfactor')}${f('auto','Auto, km/u')}${f('ov','OV, km/u')}${f('ovWacht','OV wachten/overstap, min')}${f('fiets','Fiets, km/u')}</div>
  <h2>Buffers</h2><div class="g2">${f('bAuto','Auto, min')}${f('bOv','OV, min')}${f('bFiets','Fiets, min')}</div>
  <h2>Meldingen</h2><div class="g2">${f('meld','Vertrekmelding, min vooraf')}</div>
+ <h2>Apple Agenda</h2><p class="meta">${st.extTijd?'Laatst bijgewerkt '+new Date(st.extTijd).toLocaleString('nl-NL',{dateStyle:'short',timeStyle:'short'})+' · '+(st.ext||[]).length+' afspraken uit: '+esc((st.agendas||[]).filter(a=>a!='RSR Planner').join(', ')):'Nog niet gesynchroniseerd.'}${agStatus?'<br>'+esc(agStatus):''}</p>
+ <div class="row"><button class="b" data-a="agsync">Nu synchroniseren</button><button class="b" data-a="agall">Planner → Apple Agenda</button></div>
+ <p class="note">Afspraken uit Apple Agenda (zoals je Jumbo-rooster uit R&amp;R en je Avans-rooster) verschijnen als vaste afspraken, met reisblok als de locatie bij Locaties staat. Wat je in de planner maakt, komt in de agenda “RSR Planner”. Bijwerken gebeurt bij openen, bij Vernieuwen en elke 5 minuten.</p>
  <h2>AI-verbruik vandaag</h2><p class="meta">${verbruik().n} verzoeken · ${verbruik().tok.toLocaleString('nl-NL')} tokens. Gratis plan van Cloudflare Workers AI: dagelijks gratis verbruik, geen kosten. Is het op, dan stopt de AI tot morgen en werkt handmatige invoer gewoon door.</p>
  <h2>Gegevens</h2><div class="row"><button class="b" data-a="export">Exporteer JSON</button><button class="b" data-a="logout">Uitloggen</button></div>
  <p class="note">Ingelogd als ${esc(user?.email)}</p>`}
@@ -205,8 +227,8 @@ function bind(){
   f.oninput=upd;upd();
   f.onsubmit=async ev=>{ev.preventDefault();const o=Object.fromEntries(new FormData(f));o.vast=o.vast=='1';
    if(m(o.eind)<=m(o.start)){$('opts').textContent='Eindtijd moet na de starttijd liggen.';return}
-   if(edit){await run(sb.from('afspraken').update(evRow(o)).eq('id',edit));Object.assign(st.ev.find(e=>e.id==edit),o)}
-   else{const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id})}
+   if(edit){await run(sb.from('afspraken').update(evRow(o)).eq('id',edit));Object.assign(st.ev.find(e=>e.id==edit),o);agPut(st.ev.find(e=>e.id==edit))}
+   else{const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id});agPut({...o,id:d.id})}
    day=o.datum;edit=null;cache();render()}}
  const fai=$('fai');if(fai)fai.onsubmit=ev=>{ev.preventDefault();const t=fai.t.value.trim();if(t)aiVoorstel(t)};
  const fz=$('fz');if(fz)fz.onsubmit=async ev=>{ev.preventDefault();$('lerr').textContent='Zoeken…';
@@ -224,12 +246,14 @@ document.addEventListener('click',async ev=>{const t=ev.target.closest('[data-v]
   if(a=='prev'||a=='next'){d.setDate(d.getDate()+(a=='prev'?-1:1));day=iso(d)}
   if(a=='pweek'||a=='nweek'){d.setDate(d.getDate()+(a=='pweek'?-7:7));day=iso(d)}
   if(a=='today')day=iso(new Date());if(a=='new')edit='';if(a=='cancel')edit=null;
-  if(a=='del'){await run(sb.from('afspraken').delete().eq('id',edit));st.ev=st.ev.filter(e=>e.id!=edit);edit=null;cache()}
+  if(a=='del'){await run(sb.from('afspraken').delete().eq('id',edit));agDel(edit);st.ev=st.ev.filter(e=>e.id!=edit);edit=null;cache()}
   if(a=='aicancel'){ai={tekst:'',bezig:false,fout:'',v:null}}
   if(a=='aisave'){const kies=[...document.querySelectorAll('[data-ai]')].filter(x=>x.checked).map(x=>ai.v.items[+x.dataset.ai]);
    for(const it of kies){const o={titel:it.titel,cat:it.cat,datum:it.datum,start:it.start,eind:it.eind,loc:it.loc,mode:it.mode,vast:it.vast};
-    const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id})}
+    const d=await run(sb.from('afspraken').insert(evRow(o)).select().single());st.ev.push({...o,id:d.id});agPut({...o,id:d.id})}
    if(kies[0])day=kies[0].datum;ai={tekst:'',bezig:false,fout:'',v:null};cache()}
+  if(a=='agsync'){agStatus='Synchroniseren…';render();await agSync(false);if(!agStatus)agStatus='Bijgewerkt.'}
+  if(a=='agall'){for(const e of st.ev)agPut(e);agStatus='Alle planner-afspraken worden naar Apple Agenda gezet.'}
   if(a=='export'){const b=new Blob([JSON.stringify(st,null,1)],{type:'application/json'}),u=URL.createObjectURL(b),x=document.createElement('a');x.href=u;x.download=iso(new Date())+'_RSR_Planner_export.json';x.click();return}
   if(a=='logout'){await sb.auth.signOut();try{localStorage.removeItem('rsr-cache')}catch(e){}return}}
  render()});
@@ -243,9 +267,10 @@ addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(VIEWS.some(
 addEventListener('online',()=>user&&load().then(render));
 
 sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;
- if(user&&user.id!=was){fromCache();render();setTimeout(()=>load().then(render),0)}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[]};render()}});
-async function refresh(){if(!user)return;$('rf').disabled=true;try{await load();render()}finally{$('rf').disabled=false}}
+ if(user&&user.id!=was){fromCache();render();setTimeout(()=>load().then(()=>agSync(true)).then(render),0)}else if(!user){st={s:{...DEFS},locs:[],corr:{},ev:[],ext:[],extTijd:null,agendas:[]};render()}});
+async function refresh(){if(!user)return;$('rf').disabled=true;try{await load();await agSync(true);render()}finally{$('rf').disabled=false}}
 $('rf').onclick=refresh;
+setInterval(()=>{if(user&&document.visibilityState=='visible')agSync(true).then(render)},5*60*1000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')refresh()});
 let y0=null;addEventListener('touchstart',e=>{y0=scrollY==0?e.touches[0].clientY:null},{passive:true});
 addEventListener('touchend',e=>{if(y0!=null&&e.changedTouches[0].clientY-y0>90)refresh();y0=null},{passive:true});
